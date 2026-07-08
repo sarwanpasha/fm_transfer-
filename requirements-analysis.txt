@@ -1,0 +1,6 @@
+# Environment for analysis + figures (CPU only; no GPU or model deps needed).
+numpy
+scipy
+scikit-learn
+scanpy
+matplotlib

@@ -1,0 +1,8 @@
+# Environment for scVI extraction (Python 3.10, CUDA 12.1).
+# pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch
+scvi-tools
+scanpy
+scikit-learn
+numpy
+scipy

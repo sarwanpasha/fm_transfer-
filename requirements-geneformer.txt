@@ -1,0 +1,10 @@
+# Environment for Geneformer extraction (Python 3.10, CUDA 12.1).
+# pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1
+geneformer @ git+https://huggingface.co/ctheodoris/Geneformer
+transformers<4.50
+scanpy
+scikit-learn
+numpy
+scipy
+huggingface_hub
