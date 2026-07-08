@@ -202,7 +202,7 @@ Bootstraps use 5,000 resamples.
 
 ## License
 
-Released under the MIT License — see [LICENSE](LICENSE). Note that the datasets
+Released under the MIT License. Note that the datasets
 and model checkpoints are governed by their own respective licenses; consult the
 sources above before redistribution.
 
