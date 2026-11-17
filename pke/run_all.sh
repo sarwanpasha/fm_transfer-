@@ -17,5 +17,20 @@ python fm_ext.py --wd "$FMTRANSFER_ROOT" --gi "${GROWTH_GI_XLSX:-data/external/a
 # Optional: GEARS baseline (requires cell-gears) and foundation-model kernels (requires embeddings in results/emb/)
 #   python fm_gears.py --run <run> ; python fm_gears_merge.py --run <run>
 #   python fm_pkefm.py --run <run>
+# Revision analyses: label-free gene sets, unseen-gene categories, PKE-ANOVA, posterior variance, design,
+# explanation stability, GI modes with Holm correction, other baselines and the held-out sci-Plex screen
+python fm_rev_sciplex.py --h5ad "${SCIPLEX_H5AD:-data/combo_sciplex_prep_hvg_filtered.h5ad}" --wd "$FMTRANSFER_ROOT"
+for r in "$FMTRANSFER_ROOT"/results/*_mc500; do
+  python fm_rev.py --run "$r"
+  python fm_rev_base.py --run "$r" --emb "${STRING_EMB:-data/gene_string_embeddings.v0.3.h5}"
+done
+for ds in Norman Wessels TianIPSC TianNeuron Sciplex; do python fm_rev_al.py --run "$FMTRANSFER_ROOT/results/${ds}_s0_mc500"; done
+for ds in Norman Wessels TianIPSC TianNeuron; do
+  python fm_rev_base.py --run "$FMTRANSFER_ROOT/results/${ds}_s0_mc500" --emb "${STRING_EMB:-data/gene_string_embeddings.v0.3.h5}" --noisy 10
+done
+python fm_rev_ext.py --wd "$FMTRANSFER_ROOT" --gi "${GROWTH_GI_XLSX:-data/external/aax4438_tables5.xlsx}"
+python fm_rev_tian.py --wd "$FMTRANSFER_ROOT"
+# Cell-level baselines (requires GPerturb and cpa-tools): fm_dl.py --run <run> --model gperturb|cpa --scheme random|genegrp --fold k
+python fm_rev_summary.py "$FMTRANSFER_ROOT"; python fm_dl_summary.py "$FMTRANSFER_ROOT"
 python fm_final_table.py "$FMTRANSFER_ROOT"
 python fm_figdata.py
