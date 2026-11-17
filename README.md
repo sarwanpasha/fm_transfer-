@@ -1,212 +1,126 @@
-# What Single-Cell Foundation Models Encode About Genetic Perturbation
+# fm_transfer
 
-Code for the study *"What Single-Cell Foundation Models Encode About Genetic
-Perturbation: Composition, Interaction, and the Limits of a Geometric Account."*
+Code for analyzing genetic perturbations in single-cell CRISPR screens. The repository has two parts:
 
-This repository probes the **frozen embedding geometry** of single-cell
-foundation models (scGPT, Geneformer) — plus a non-pretrained VAE baseline
-(scVI) and a raw-expression baseline — to ask what these representations encode
-about how genetic perturbations **compose** and **interact**. It reproduces every
-figure and number in the paper from public data.
+* `pke/`: the pair-kernel ensemble (PKE), a kernel ridge regression model that predicts the genetic-interaction (GI)
+  residual of an unmeasured double perturbation from the single-perturbation profiles of its two genes, together with
+  baselines, ablations, interpretability analyses and external validation.
+* `scripts/`, `analysis/`, `figures/`: extraction of frozen single-cell foundation-model embeddings (scGPT, Geneformer,
+  scVI) and CPU analyses of their geometry.
 
-## Summary of findings
-
-- **Compositional additivity.** Foundation-model geometry is substantially more
-  additive than raw expression: a double perturbation's embedding is well
-  approximated by the sum of its single-perturbation effects.
-- **Genetic-interaction (GI) tracking.** The non-additive interaction residual
-  tracks measured genetic-interaction strength far above a raw-expression
-  baseline (Spearman gap ≈ +0.23, bootstrap P(gap > 0) = 1.0).
-- **Not universal, not from pretraining.** GI-tracking replicates across cell
-  line and assay for scGPT but **fails for Geneformer under CRISPR interference**,
-  and is **reproduced by a non-pretrained VAE** — so it is neither universal
-  across architectures nor a product of observational pretraining.
-- **No single geometric explanation.** An effective-rank criterion explains the
-  failure *within* the transformer family but does **not** generalize across
-  architectures, and a post-hoc geometric correction cannot restore lost
-  structure (a negative result).
-- **Phenotypic program.** Program identity is decodable from the embeddings and
-  transfers to perturbations of unseen genes, above a gene-identity ceiling
-  (ruling out leakage).
-
-## Repository layout
-
-```
-config/            # Central path/config resolution (no hard-coded paths)
-  paths.py
-scripts/           # Data download + GPU embedding extraction
-  download_all.py
-  download_wessels.py
-  extract_scgpt.py
-  extract_geneformer.py
-  extract_scvi.py
-analysis/          # CPU analyses that consume saved embeddings
-  common.py
-  exp1_additivity.py
-  gi_tracking.py
-  program_classification.py
-  criterion_vs_gap.py
-  correction.py
-figures/           # Figure generation
-  make_figures.py
-slurm/             # Generic SLURM template (no cluster-specific values)
-  example_extract.sbatch
-requirements-*.txt # One environment per model family + one for analysis
-```
-
-> Note: no cluster account codes, usernames, hostnames, or absolute paths appear
-> anywhere in this repository. The SLURM template uses placeholders you fill in
-> for your own scheduler.
-
-## Configuration: where the data lives
-
-No machine-specific or personal paths are hard-coded anywhere. All scripts
-resolve their data directory from a single environment variable:
+No machine-specific paths are hard-coded. All scripts read and write under one directory given by an environment variable:
 
 ```bash
-export FMTRANSFER_ROOT=/path/to/your/data
+export FMTRANSFER_ROOT=/path/to/your/workdir   # defaults to the current directory if unset
 ```
 
-If unset, it defaults to `./data` next to the repository. See
-[`config/paths.py`](config/paths.py). The expected layout under
-`FMTRANSFER_ROOT` is:
+## Pair-kernel ensemble (`pke/`)
 
-```
-norman/perturb_processed.h5ad          # GEARS-processed Norman 2019
-wessels/WesselsSatija2023.h5ad         # scPerturb Wessels / CaRPool-seq
-scGPT_human/{best_model.pt,args.json,vocab.json}
-hf_cache/                              # HuggingFace cache (Geneformer)
-norman_labeled/norman_2019_adata.h5ad  # program labels (for program analysis)
-*.npz                                  # extracted embeddings (written here)
-```
+### Method in brief
 
-## Environments
+For genes `a`, `b` with single-perturbation shifts `delta_a = x_a - x_0`, the GI residual of the double is
+`r_ab = x_ab - x_a - x_b + x_0`. PKE builds gene kernels `k(a, b)` from the single shifts (9 RBF kernels on whitened
+principal components and 4 closed-form erf-network kernels) and turns each into two symmetric kernels on unordered pairs:
 
-The three model families have **mutually incompatible dependencies**, so each
-gets its own environment. Analyses and figures need none of the heavy model
-dependencies. We use Python 3.10 and CUDA 12.1 throughout.
+* interaction kernel `K_x({a,b},{c,d}) = 0.5 * [k(a,c) k(b,d) + k(a,d) k(b,c)]`
+* main-effect kernel `K_+({a,b},{c,d}) = 0.5 * [k(a,c) + k(b,d) + k(a,d) + k(b,c)]`
 
-```bash
-# scGPT extraction
-python -m venv env_scgpt && source env_scgpt/bin/activate
-pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements-scgpt.txt
+The 22 pair kernels are averaged with equal weights, and centered kernel ridge regression is fitted with the penalty chosen
+by closed-form leave-one-out error. Every prediction splits exactly into an intercept, gene-level terms `g(a) + g(b)` and a
+pair-specific term, and into contributions of the measured doubles (representer shares that sum to 1).
+The model class is `PKE` in `pke/fm_bio.py`.
 
-# Geneformer extraction (separate env)
-python -m venv env_geneformer && source env_geneformer/bin/activate
-pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements-geneformer.txt
+### Data
 
-# scVI extraction (separate env)
-python -m venv env_scvi && source env_scvi/bin/activate
-pip install torch --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements-scvi.txt
+All screens are public in the scPerturb collection (Zenodo record 13350497). Place the files under `$FMTRANSFER_ROOT/data/`:
 
-# Analysis + figures (CPU only; no GPU or model deps)
-python -m venv env_analysis && source env_analysis/bin/activate
-pip install -r requirements-analysis.txt
-```
-
-> Tip: set `PYTHONNOUSERSITE=1` inside each environment to avoid leaking packages
-> from a shared user site-packages directory.
-
-## Data sources (all public)
-
-| Dataset / model | Source |
+| Dataset | File |
 |---|---|
-| Norman 2019 (CRISPRa, combinatorial) | via [GEARS](https://github.com/snap-stanford/GEARS) `PertData` |
-| Wessels / CaRPool-seq (CRISPRi, Cas13) | [Zenodo record 13350497](https://zenodo.org/records/13350497) (scPerturb) |
-| scGPT whole-human checkpoint | [scGPT repo](https://github.com/bowang-lab/scGPT) (public Drive folder) |
-| Geneformer V2-104M | [HuggingFace `ctheodoris/Geneformer`](https://huggingface.co/ctheodoris/Geneformer) |
-| Norman program labels | public figshare release (`norman_2019_adata.h5ad`) |
+| Norman et al. 2019 (CRISPRa, K562) | `NormanWeissman2019_filtered.h5ad` |
+| Wessels et al. 2023 (Cas13 knockdown) | `WesselsSatija2023.h5ad` |
+| Tian et al. 2019 (CRISPRi, iPSC) | `TianKampmann2019_iPSC.h5ad` |
+| Tian et al. 2019 (CRISPRi, day-7 neurons) | `TianKampmann2019_day7neuron.h5ad` |
 
-Download everything (run on a machine with internet, e.g. a login node):
+The external validation uses the growth GI table of Norman et al. 2019 (Table S5), placed under `$FMTRANSFER_ROOT/data/external/`.
+
+### Environment
+
+Python 3.10 or later with `numpy`, `scipy`, `scikit-learn`, `anndata`, `scanpy`, `openpyxl` and `matplotlib`.
+The GEARS baseline additionally needs `cell-gears==0.1.2`.
+
+### Running
 
 ```bash
-python scripts/download_all.py
-python scripts/download_wessels.py
+cd pke
+bash run_all.sh
 ```
 
-## Reproducing the study
+or step by step:
 
-### 1. Extract embeddings (GPU)
+| Script | Purpose | Output (per run directory unless noted) |
+|---|---|---|
+| `prepare.py --dataset D --seed S` | subsample (at most 500 cells per condition), normalize, select 5,000 highly variable genes, pseudobulk | `pb_hvg.npz`, `subsample.npz`, `summary.json` |
+| `fm_pke.py --run R` | PKE, baselines (mean, ridge, kNN, single kernels) and ablations; 5-fold CV under random and held-out-gene splits, 3 fold seeds | `pke.json` |
+| `fm_bio.py --run R` | GI-mode prediction, in silico screen of untested pairs, gene propensity, exact explanations, residual programs | `bio/*.json`, `bio/*.tsv` |
+| `fm_bio2.py --wd W` | iPSC/neuron transfer of GIs and the gene-similarity versus error analysis | `results/bio2.json` |
+| `fm_ext.py --wd W --gi F --format norman` | association of predictions for untested pairs with an independent growth GI map | `results/<out>.json` |
+| `fm_ceiling.py --run R` | split-half reliability of the GI residuals | `ceiling.json` |
+| `fm_gears.py`, `fm_gears_merge.py` | GEARS baseline on the same folds | `gears.json` |
+| `fm_pkefm.py --run R` | foundation-model gene kernels added to, or swapped into, PKE (expects embeddings in `results/emb/`) | `pkefm.json` |
+| `fm_final_table.py W` | summary table across datasets and splits | `results/final_table.txt` |
+| `fm_figdata.py`, `make_figures.py` | collect results and draw the figures | `results/figdata.json`, `fig*.pdf` |
 
-Each extraction takes a dataset argument (`norman` or `wessels`) and writes
-`*_pseudobulk.npz` / `*_cell_emb.npz` into `FMTRANSFER_ROOT`.
+`fmcore.py` and `fmpredict.py` hold the shared helpers (condition parsing, the exact GI residual, evaluation genes,
+cross-validation splits and ridge pair features). `fm_gira*.py` contain the kernel utilities and the earlier kernel
+experiments (single pair kernels, random-feature ensembles, kernel selection by leave-one-out error and pretrained-embedding
+kernels) that PKE builds on.
 
-```bash
-# scGPT env
-python scripts/extract_scgpt.py norman
-python scripts/extract_scgpt.py wessels
+### Evaluation protocol
 
-# Geneformer env
-python scripts/extract_geneformer.py norman
-python scripts/extract_geneformer.py wessels
+* Held-out doubles by 5-fold cross-validation, random or held-out-gene splits, fold seeds 0, 1 and 2.
+* Evaluation genes per double: the 50 genes with the largest absolute change from control, excluding the two targets.
+* `R^2 = 1 - sum ||r - r_hat||^2 / sum ||r||^2` (relative to the additive model), with 1,000 paired bootstrap resamples of
+  doubles for confidence intervals.
 
-# scVI env (runs both datasets)
-python scripts/extract_scvi.py
+## Foundation-model embedding analyses (`scripts/`, `analysis/`, `figures/`)
+
+```
+config/      central path resolution (FMTRANSFER_ROOT)
+scripts/     data download and GPU embedding extraction (scGPT, Geneformer, scVI)
+analysis/    CPU analyses of the saved embeddings
+figures/     figure generation
+slurm/       generic SLURM template with placeholders
+requirements-*.txt   one environment per model family and one for the analyses
 ```
 
-### 2. Run analyses (CPU)
+Each model family needs its own environment because their dependencies conflict:
 
 ```bash
-# analysis env
+python -m venv env_scgpt && source env_scgpt/bin/activate
+pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cu121 && pip install -r requirements-scgpt.txt
+
+python -m venv env_geneformer && source env_geneformer/bin/activate
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121 && pip install -r requirements-geneformer.txt
+
+python -m venv env_scvi && source env_scvi/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cu121 && pip install -r requirements-scvi.txt
+
+python -m venv env_analysis && source env_analysis/bin/activate && pip install -r requirements-analysis.txt
+```
+
+Download the data and extract embeddings, then run the analyses:
+
+```bash
+python scripts/download_all.py && python scripts/download_wessels.py
+python scripts/extract_scgpt.py norman      # likewise for wessels, extract_geneformer.py, extract_scvi.py
 python analysis/exp1_additivity.py norman
-python analysis/exp1_additivity.py wessels
 python analysis/gi_tracking.py norman
-python analysis/gi_tracking.py wessels
 python analysis/program_classification.py
 python analysis/criterion_vs_gap.py
 python analysis/correction.py
-```
-
-Each writes a small JSON of results into `FMTRANSFER_ROOT`.
-
-### 3. Generate figures
-
-```bash
 FIGDIR=figures_out python figures/make_figures.py
 ```
 
-The figure script reproduces all six paper figures. It ships with the reported
-values so it runs standalone; point it at your JSON outputs to regenerate from
-your own run.
-
-## Method notes
-
-- **Pseudobulking & subsampling.** Cells are subsampled to at most 500 per
-  condition (fixed seed) before pseudobulking, for comparability across
-  conditions of very different size.
-- **Gene-name handling.** Norman variables are Ensembl IDs (scGPT maps via
-  symbols; Geneformer is Ensembl-native). Wessels variables are symbols (scGPT
-  maps directly; Geneformer maps symbols → Ensembl via its own bundled
-  dictionary). The legacy symbol `VPRBP` is aliased to its current symbol
-  `DCAF1`, and Wessels guide-barcode pseudo-features are filtered out.
-- **GI ground truth.** For each double, the additivity residual in
-  log-normalized expression restricted to that condition's top-50 differentially
-  expressed genes; applied identically across datasets for like-for-like
-  comparison.
-- **GI-tracking gap.** Model-minus-raw-PCA difference in Spearman correlation
-  between embedding interaction-residual magnitude and expression GI magnitude,
-  with a 5,000-sample **paired** bootstrap (same resampled doubles for model and
-  baseline).
-- **Program leakage control.** Program classification uses a leave-genes-out
-  split (test conditions share no gene with training) and a gene-identity
-  one-hot baseline, so an FM advantage cannot be gene-identity leakage.
-
-## Reproducibility
-
-All analyses operate on **frozen** embeddings; no model weights are modified.
-Datasets and checkpoints are public. Random seeds are fixed (`SEED = 0`).
-Bootstraps use 5,000 resamples.
-
 ## License
 
-Released under the MIT License. Note that the datasets
-and model checkpoints are governed by their own respective licenses; consult the
-sources above before redistribution.
-
-## Citation
-
-If you use this code, please cite the paper. A BibTeX entry will be added here
-upon publication.
+MIT. The datasets and model checkpoints are governed by their own licenses.
