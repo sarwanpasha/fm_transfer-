@@ -46,7 +46,8 @@ The external validation uses the growth GI table of Norman et al. 2019 (Table S5
 ### Environment
 
 Python 3.10 or later with `numpy`, `scipy`, `scikit-learn`, `anndata`, `scanpy`, `openpyxl` and `matplotlib`.
-The GEARS baseline additionally needs `cell-gears==0.1.2`.
+The GEARS baseline additionally needs `cell-gears==0.1.2`, the Peper reimplementation `torch`, the SLIM baseline `h5py`
+and the STRING embeddings distributed with SLIM, and the cell-level baselines GPerturb and `cpa-tools`.
 
 ### Running
 
@@ -67,6 +68,14 @@ or step by step:
 | `fm_ceiling.py --run R` | split-half reliability of the GI residuals | `ceiling.json` |
 | `fm_gears.py`, `fm_gears_merge.py` | GEARS baseline on the same folds | `gears.json` |
 | `fm_pkefm.py --run R` | foundation-model gene kernels added to, or swapped into, PKE (expects embeddings in `results/emb/`) | `pkefm.json` |
+| `fm_rev.py --run R` | label-free evaluation gene sets, 1- and 2-unseen-gene categories, intercept-only and kNN baselines, the zero-mean variant PKE-ANOVA, posterior variance versus error, stability of representer shares, GI modes with Holm correction | `rev.json`, `rev_pd.npz` |
+| `fm_rev_al.py --run R` | choice of new doubles by posterior variance, predicted strength or both, against random selection | `rev_al.json` |
+| `fm_rev_base.py --run R --emb E [--noisy N]` | Salt (additive), a Peper reimplementation, SLIM and PKE with a STRING kernel; optionally single profiles from N cells | `rev_base.json`, `rev_noisy<N>.json` |
+| `fm_dl.py --run R --model gperturb\|cpa --scheme S --fold K` | cell-level GPerturb and CPA baselines on the same folds | `dl_<model>_<scheme>_f<K>.npz` |
+| `fm_rev_ext.py --wd W --gi F` | external validation with a gene-label permutation test and gene-level controls | `results/rev_ext.json` |
+| `fm_rev_tian.py --wd W` | split-half noise ceiling for the iPSC/neuron comparison | `results/rev_tian.json` |
+| `fm_rev_sciplex.py --h5ad F --wd W` | preprocessing of the combinatorial sci-Plex drug screen | `results/Sciplex_s*_mc500/` |
+| `fm_rev_summary.py W`, `fm_dl_summary.py W` | dataset-level statistics pooled over subsamples (bootstrap over doubles) | `results/rev_summary.json`, `results/dl_summary.json` |
 | `fm_final_table.py W` | summary table across datasets and splits | `results/final_table.txt` |
 | `fm_figdata.py`, `make_figures.py` | collect results and draw the figures | `results/figdata.json`, `fig*.pdf` |
 
@@ -79,8 +88,10 @@ kernels) that PKE builds on.
 
 * Held-out doubles by 5-fold cross-validation, random or held-out-gene splits, fold seeds 0, 1 and 2.
 * Evaluation genes per double: the 50 genes with the largest absolute change from control, excluding the two targets.
-* `R^2 = 1 - sum ||r - r_hat||^2 / sum ||r||^2` (relative to the additive model), with 1,000 paired bootstrap resamples of
-  doubles for confidence intervals.
+* Additional evaluation gene sets that use no information from the test double: the 50 genes most changed by either
+  single perturbation, and all 5,000 genes.
+* `R^2 = 1 - sum ||r - r_hat||^2 / sum ||r||^2` (relative to the additive model) and a centered `R^2` relative to the
+  intercept-only model. Dataset-level confidence intervals pool errors over subsamples and fold seeds and resample doubles.
 
 ## Foundation-model embedding analyses (`scripts/`, `analysis/`, `figures/`)
 
