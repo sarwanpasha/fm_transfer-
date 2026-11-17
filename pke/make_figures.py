@@ -206,24 +206,25 @@ def fig3():
 # =========================================================================== Figure 4: design and robustness
 def fig4():
     fig = plt.figure(figsize=(W, 5.0))
-    outer = fig.add_gridspec(2, 1, hspace=0.62, left=0.1, right=0.99, top=0.9, bottom=0.14, height_ratios=[1, 1.05])
-    top = outer[0].subgridspec(1, 4, wspace=0.35)
-    n = np.arange(20, 81, 10); sty = [("random", GRAY, "Random"), ("variance", BLUE, "Variance"), ("strength", ORANGE, "Strength"),
-                                      ("var_x_strength", AQUA, "Variance x strength")]
-    for k, ds in enumerate(DS):
-        ax = fig.add_subplot(top[0, k])
-        if k == 0: tag(ax, "a", x=-0.55)
-        for key, c, lab in sty:
-            ax.plot(n, AL[ds][key], "-o", color=c, ms=2.6, lw=1.3, label=lab)
-        ax.set_title(DSL[ds].replace("\n", " "), fontsize=8.5, pad=3); ax.set_xticks([20, 50, 80]); ax.tick_params(labelsize=7.5)
-        ax.set_xlabel("Doubles measured", fontsize=8); grid(ax)
-        if k == 0: ax.set_ylabel(r"$R^2$, unmeasured", fontsize=8.5)
-    h, l = ax.get_legend_handles_labels()
-    fig.legend(h, l, loc="upper center", bbox_to_anchor=(.55, 1.0), ncol=4, handlelength=1.4, columnspacing=1.0, fontsize=7.5)
+    outer = fig.add_gridspec(2, 1, hspace=0.75, left=0.1, right=0.99, top=0.9, bottom=0.14, height_ratios=[1, 1.05])
+    ax = fig.add_subplot(outer[0]); tag(ax, "a", x=-0.1, y=1.1)
+    DD = ["Norman", "Wessels", "TianNeuron", "Joung"]; rules = list(DESIGN90)
+    rc = {"Variance": BLUE, "Variance x strength": AQUA, "Strength": ORANGE, "Coverage": "#8e6bbf", "Farthest point": GRAY}
+    wb = .8 / len(rules)
+    for i, ds in enumerate(DD):
+        for k, r in enumerate(rules):
+            v, lo, hi = DESIGN90[r][ds]; x = i - .4 + (k + .5) * wb
+            ax.bar(x, v, width=wb * .9, color=rc[r], label=r if i == 0 else None)
+            ax.plot([x, x], [lo, hi], color=INK, lw=.9)
+    ax.axhline(0, color=INK2, lw=.8); ax.set_xticks(range(len(DD)))
+    ax.set_xticklabels([f"{DSL.get(d, d).replace(chr(10), ' ')}\n(random: {DESIGN_N90[d]:.0f})" for d in DD], fontsize=8)
+    ax.set_ylabel("Doubles saved versus random"); ax.set_ylim(-20, 14); grid(ax)
+    ax.legend(loc="lower center", bbox_to_anchor=(.5, 1.0), ncol=5, handlelength=1.0, columnspacing=.9, fontsize=7.5)
     bot = outer[1].subgridspec(1, 3, wspace=0.6, width_ratios=[.8, 1.3, 1])
     ax = fig.add_subplot(bot[0, 0]); tag(ax, "b", x=-0.55, y=1.2); x = np.arange(4)
-    ax.bar(x, [GPRHO[d] for d in DS], width=.6, color=BLUE)
-    ax.axhline(0, color=INK2, lw=0.8); ax.set_xticks(x); ax.set_xticklabels(SHORT, fontsize=7.5, rotation=35, ha="right")
+    D5 = DS + ["Joung"]; x5 = np.arange(5)
+    ax.bar(x5, [GPRHO[d] for d in D5], width=.6, color=BLUE)
+    ax.axhline(0, color=INK2, lw=0.8); ax.set_xticks(x5); ax.set_xticklabels(SHORT + ["Joung"], fontsize=7, rotation=45, ha="right")
     ax.set_ylabel(r"$\rho$(variance, error)"); ax.set_ylim(-.1, .6); grid(ax)
     ax = fig.add_subplot(bot[0, 1]); tag(ax, "c", x=-0.32, y=1.2)
     ms = ["Ridge", "PKE", "PKE+STRING"]; cs = [ORANGE, BLUE, "#8e6bbf"]
@@ -243,5 +244,30 @@ def fig4():
     save(fig, "fig4_design")
 
 
+# =========================================================================== Figure 5: interaction propensity
+def fig5():
+    fig = plt.figure(figsize=(W, 2.9))
+    gs = fig.add_gridspec(1, 3, wspace=0.55, left=0.09, right=0.99, top=0.84, bottom=0.26, width_ratios=[1.25, .8, 1.15])
+    D5 = DS + ["Joung"]; L5 = SHORT + ["Joung"]; x = np.arange(5)
+    ax = fig.add_subplot(gs[0, 0]); tag(ax, "a", x=-0.3, y=1.08)
+    for k, (lab, c) in enumerate([("Gene additive", GRAY), ("PKE main effects", AQUA), ("PKE", BLUE)]):
+        ax.bar(x + (k - 1) * .27, [GENELEVEL[d][k] for d in D5], width=.25, color=c, label=lab)
+    ax.set_xticks(x); ax.set_xticklabels(L5, fontsize=7.5, rotation=35, ha="right"); ax.set_ylabel(r"Centered $R^2$"); ax.set_ylim(0, .5); grid(ax)
+    ax.legend(loc="upper right", fontsize=7.5, handlelength=1.0, labelspacing=.25)
+    ax = fig.add_subplot(gs[0, 1]); tag(ax, "b", x=-0.45, y=1.08)
+    ax.bar(x, [PROPHALF[d] for d in D5], width=.6, color=BLUE)
+    ax.set_xticks(x); ax.set_xticklabels(L5, fontsize=7, rotation=45, ha="right"); ax.set_ylim(0, 1); ax.set_ylabel(r"$\rho$, disjoint halves"); grid(ax)
+    ax = fig.add_subplot(gs[0, 2]); tag(ax, "c", x=-0.32, y=1.08)
+    P = np.array([g[1] for g in PROPGENES]); H = np.array([g[3] for g in PROPGENES])
+    cols = [BLUE if g[0].startswith("CEBP") else GRAY for g in PROPGENES]
+    ax.scatter(P, H, s=12, c=cols, lw=0, alpha=.85)
+    for g, p_, m_, h_ in PROPGENES:
+        off = {"CEBPE": (-16, -12), "CEBPA": (-14, 7), "CEBPB": (4, -9), "FEV": (4, 0), "JUN": (4, -2), "SET": (3, 3), "DLX2": (4, -2)}
+        if g in off:
+            ax.annotate(g, (p_, h_), xytext=off[g], textcoords="offset points", fontsize=7, style="italic", color=INK)
+    ax.set_xlabel(r"Propensity $\|g(x)\|$ (Norman)"); ax.set_ylabel("Growth GI hubness"); grid(ax, "both")
+    save(fig, "fig5_propensity")
+
+
 if __name__ == "__main__":
-    fig1(); fig2(); fig3(); fig4()
+    fig1(); fig2(); fig3(); fig4(); fig5()

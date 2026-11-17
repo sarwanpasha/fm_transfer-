@@ -54,9 +54,9 @@ def main():
         lab_cpa = np.array(["ctrl" if l == "control" else "+".join(l.split("_")) for l in lab])
         A = ad.AnnData(X=C[keep].copy(), obs={"cond_harm": lab_cpa[keep], "cell_type": ["cell"] * int(keep.sum())})
         A.obs["dose_value"] = ["+".join(["1.0"] * len(c.split("+"))) for c in A.obs["cond_harm"]]
-        A.obs["split"] = np.where(rng.random(A.n_obs) < 0.85, "train", "valid"); A.var_names = list(hn[gsel])
+        A.obs["split"] = np.where(rng.random(A.n_obs) < 0.85, "train", "valid"); A.var_names = list(hn[gsel]); A.obs["smiles"] = A.obs["cond_harm"].astype(str)
         cpa.CPA.setup_anndata(A, perturbation_key="cond_harm", control_group="ctrl", dosage_key="dose_value",
-                              categorical_covariate_keys=["cell_type"], is_count_data=True, max_comb_len=2)
+                              categorical_covariate_keys=["cell_type"], is_count_data=True, max_comb_len=2, smiles_key="smiles")
         mp = dict(n_latent=32, recon_loss="nb", doser_type="linear", n_hidden_encoder=256, n_layers_encoder=4, n_hidden_decoder=256,
                   n_layers_decoder=2, use_batch_norm_encoder=True, use_layer_norm_encoder=False, use_batch_norm_decoder=False,
                   use_layer_norm_decoder=False, dropout_rate_encoder=0.2, dropout_rate_decoder=0.0, variational=False, seed=8206)
@@ -69,9 +69,9 @@ def main():
         for t in targets:
             name = "+".join(t.split("_"))
             B = ad.AnnData(X=C[cf].copy(), obs={"cond_harm": [name] * len(cf), "cell_type": ["cell"] * len(cf)})
-            B.obs["dose_value"] = ["+".join(["1.0"] * len(name.split("+")))] * len(cf); B.obs["split"] = "valid"; B.var_names = A.var_names
+            B.obs["dose_value"] = ["+".join(["1.0"] * len(name.split("+")))] * len(cf); B.obs["split"] = "valid"; B.var_names = A.var_names; B.obs["smiles"] = B.obs["cond_harm"].astype(str)
             cpa.CPA.setup_anndata(B, perturbation_key="cond_harm", control_group="ctrl", dosage_key="dose_value",
-                                  categorical_covariate_keys=["cell_type"], is_count_data=True, max_comb_len=2)
+                                  categorical_covariate_keys=["cell_type"], is_count_data=True, max_comb_len=2, smiles_key="smiles")
             model.predict(B, batch_size=1024); Pm = np.asarray(B.obsm["CPA_pred"], np.float64)
             Pm = np.log1p(Pm / np.maximum(Pm.sum(1, keepdims=True), 1e-8) * 1e4 * (Pm.sum(1, keepdims=True) / np.maximum(lib[cf][:, None], 1)))
             pred[t] = Pm.mean(0)
