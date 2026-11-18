@@ -66,12 +66,18 @@ or step by step:
 | `fm_bio2.py --wd W` | iPSC/neuron transfer of GIs and the gene-similarity versus error analysis | `results/bio2.json` |
 | `fm_ext.py --wd W --gi F --format norman` | association of predictions for untested pairs with an independent growth GI map | `results/<out>.json` |
 | `fm_ceiling.py --run R` | split-half reliability of the GI residuals | `ceiling.json` |
-| `fm_gears.py`, `fm_gears_merge.py` | GEARS baseline on the same folds | `gears.json` |
+| `fm_gears.py`, `fm_gears_merge.py` | GEARS baseline on the same folds | `gears_acc_*.npz`, `gears_pd20_*.npy`, `gears.json` |
 | `fm_pkefm.py --run R` | foundation-model gene kernels added to, or swapped into, PKE (expects embeddings in `results/emb/`) | `pkefm.json` |
 | `fm_rev.py --run R` | label-free evaluation gene sets, 1- and 2-unseen-gene categories, intercept-only and kNN baselines, the zero-mean variant PKE-ANOVA, posterior variance versus error, stability of representer shares, GI modes with Holm correction | `rev.json`, `rev_pd.npz` |
 | `fm_rev_al.py --run R` | choice of new doubles by posterior variance, predicted strength or both, against random selection | `rev_al.json` |
 | `fm_rev_base.py --run R --emb E [--noisy N]` | Salt (additive), a Peper reimplementation, SLIM and PKE with a STRING kernel; optionally single profiles from N cells | `rev_base.json`, `rev_noisy<N>.json` |
-| `fm_dl.py --run R --model gperturb\|cpa --scheme S --fold K` | cell-level GPerturb and CPA baselines on the same folds | `dl_<model>_<scheme>_f<K>.npz` |
+| `fm_dl.py --run R --model gperturb\|cpa --scheme S --fold K` | cell-level GPerturb and CPA baselines on the same folds | `dl_<model>_<scheme>_f<K>.npz`, `dl_<model>_<scheme>_f<K>_pd20.npy` |
+| `fm_cpa_patch.py F` | compatibility patch for cpa-tools 0.8 with Lightning 2 | patched `cpa/_task.py` |
+| `fm_sanity_summary.py W` | GEARS-style metrics (Pearson correlation and MSE of the change from control on the 20 most changed genes) for GEARS, GPerturb and CPA on Norman | `results/sanity_norman.json` |
+| `fm_rev_joung.py --wd W` | preprocessing of the held-out combinatorial transcription factor screen of Joung et al. | `results/Joung_s*_mc500/` |
+| `fm_design.py --run R`, `fm_design_summary.py W` | choice of new doubles with a fixed test set: 6 selection rules, doubles needed to reach 80% and 90% of full-pool accuracy | `design.json`, `results/design_summary.json` |
+| `fm_propensity.py --run R`, `fm_propensity.py --wd W --gi F`, `fm_prop_export.py W F` | gene-level structure of the residuals, split-half reproducibility of interaction propensity, cross-cell-type and cross-assay comparisons | `propensity.json`, `results/propensity_cross.json`, `results/propensity_genes.json` |
+| `fm_validation.py --wd W --gi F` | shortlist of untested pairs (hub, pair-specific and predicted additive) for experimental validation | `results/validation_shortlist.json` |
 | `fm_rev_ext.py --wd W --gi F` | external validation with a gene-label permutation test and gene-level controls | `results/rev_ext.json` |
 | `fm_rev_tian.py --wd W` | split-half noise ceiling for the iPSC/neuron comparison | `results/rev_tian.json` |
 | `fm_rev_sciplex.py --h5ad F --wd W` | preprocessing of the combinatorial sci-Plex drug screen | `results/Sciplex_s*_mc500/` |
