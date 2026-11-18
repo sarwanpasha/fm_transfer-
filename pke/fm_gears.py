@@ -46,7 +46,7 @@ def main():
     out = {}
     for scheme in a.schemes:
         n = len(doubles); acc = {m: dict(err_add=np.zeros(n), err_mod=np.zeros(n), cnt=np.zeros(n)) for m in ("gears", "gears_gi", "ridge_raw", "gears_shift", "additive_shift")}
-        normr = np.zeros((n, 2)); nfall = 0; t0 = time.time()
+        normr = np.zeros((n, 2)); pd20 = np.full((4, n), np.nan); nfall = 0; t0 = time.time()
         for sd in a.seeds:
             for fi, (tr, te) in enumerate(FP.splits(doubles, scheme, a.folds, sd)):
                 if fi >= a.max_folds: break
@@ -72,6 +72,9 @@ def main():
                     else: pg = np.zeros(R.shape[1]); pgi = pg; pd_ = expr[x] + expr[y] - expr["control"]; nfall += 1
                     t = R[i, DE[i]]
                     ts = (expr[d] - expr["control"])[DE[i]]
+                    sh = expr[d] - expr["control"]; top = np.argsort(-np.abs(sh))[:20]; pa = expr[x] + expr[y] - 2 * expr["control"]
+                    pd20[:, i] = (np.corrcoef(pd_[top] - expr["control"][top], sh[top])[0, 1], np.corrcoef(pa[top], sh[top])[0, 1],
+                                  np.mean((pd_[top] - expr[d][top]) ** 2), np.mean((pa[top] - sh[top]) ** 2))
                     for m, pp in (("gears_shift", (pd_ - expr["control"])[DE[i]]), ("additive_shift", (expr[x] + expr[y] - 2 * expr["control"])[DE[i]])):
                         A_ = acc[m]; A_["err_add"][i] += ts @ ts; A_["err_mod"][i] += (ts - pp) @ (ts - pp); A_["cnt"][i] += 1
                     normr[i] += (np.linalg.norm(pgi[DE[i]]), np.linalg.norm(t))
@@ -80,6 +83,7 @@ def main():
                 print(f"  {scheme} seed{sd} fold{fi} done ({time.time() - t0:.0f}s, fallback so far {nfall})", flush=True)
         np.savez(os.path.join(a.run, f"gears_acc_{scheme}_s{'-'.join(map(str, a.seeds))}_f{a.only_fold}.npz"),
                  **{f"{m}_{k}": v for m, A_ in acc.items() for k, v in A_.items()}, nfall=nfall, normr=normr)
+        np.save(os.path.join(a.run, f"gears_pd20_{scheme}_s{'-'.join(map(str, a.seeds))}_f{a.only_fold}.npy"), pd20)
         ii = np.flatnonzero(acc["ridge_raw"]["cnt"] > 0); B = np.random.default_rng(0).choice(ii, size=(1000, len(ii)))
         r2 = lambda A_, k: 1 - A_["err_mod"][k].sum(-1) / A_["err_add"][k].sum(-1)
         d = r2(acc["gears"], B) - r2(acc["ridge_raw"], B); vg, vr = float(r2(acc["gears"], ii)), float(r2(acc["ridge_raw"], ii))

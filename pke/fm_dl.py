@@ -55,7 +55,7 @@ def main():
         lab_cpa = np.array(["ctrl" if l == "control" else "+".join(l.split("_")) for l in lab])
         # counterfactual rows: control cells relabelled with every target condition, registered with the training data so that
         # all perturbation categories are known, but held out of training and validation (split "ood")
-        tnames = ["+".join(t.split("_")) for t in targets]
+        tnames = ["+".join(t.split("_")) for t in targets] + ["ctrl"]
         Xa = sps.vstack([C[keep]] + [C[cf]] * len(tnames)).tocsr()
         conds_a = np.concatenate([lab_cpa[keep]] + [np.array([nm] * len(cf)) for nm in tnames])
         split_a = np.concatenate([np.where(rng.random(int(keep.sum())) < 0.85, "train", "valid"), np.array(["ood"] * (len(cf) * len(tnames)))])
@@ -76,11 +76,11 @@ def main():
         B = A[A.obs["split"] == "ood"].copy()
         model.predict(B, batch_size=1024); Pall = np.asarray(B.obsm["CPA_pred"], np.float64); cb = B.obs["cond_harm"].astype(str).values
         libc = np.maximum(lib[cf][:, None], 1)
-        for t, nm in zip(targets, tnames):
-            Pm = Pall[cb == nm]
-            Pm = np.log1p(Pm / np.maximum(Pm.sum(1, keepdims=True), 1e-8) * 1e4 * (Pm.sum(1, keepdims=True) / libc))
+        # the control is predicted by CPA as well (control cells passed through the model), so that any per-gene bias of the
+        # reconstruction cancels in the model's own residual and shift, as for GPerturb
+        for t, nm in zip(targets + ["control"], tnames):
+            Pm = np.log1p(Pall[cb == nm] * 1e4 / libc)
             pred[t] = Pm.mean(0)
-        pred["control"] = np.asarray(L[cf].mean(0)).ravel()
     else:
         import torch
         import glob, importlib.util
@@ -110,7 +110,7 @@ def main():
                 pred[t] = np.asarray(est["pert_mean"], np.float64).mean(0)
     f20 = gene_feats({s: expr[s] - expr["control"] for s in singles}, 20)
     Fr = np.stack([FP.pair_features(f20[x], f20[y]) for _, x, y in doubles]); Pr = ridge_pairs(Fr[tr], Fr[te], R[tr])
-    acc = {m: np.zeros((2, len(doubles))) for m in ("dl_obs", "dl_own", "ridge_raw", "dl_shift", "additive_shift")}
+    acc = {m: np.zeros((2, len(doubles))) for m in ("dl_obs", "dl_own", "ridge_raw", "dl_shift", "dl_shift_own", "additive_shift")}
     for j, i in enumerate(te):
         d, x, y = doubles[i]; ix = [gmap[g] for g in DE[i] if g in gmap]; gi = np.array([gsel[k] for k in ix]); ix = np.array(ix)
         t = R[i, gi]
@@ -118,8 +118,14 @@ def main():
         p_own = pred[d][ix] - pred[x][ix] - pred[y][ix] + pred["control"][ix]
         ts = (expr[d] - expr["control"])[gi]
         for m, pp, tt in (("dl_obs", p_obs, t), ("dl_own", p_own, t), ("ridge_raw", Pr[j, gi], t),
-                          ("dl_shift", pred[d][ix] - expr["control"][gi], ts), ("additive_shift", (expr[x] + expr[y] - 2 * expr["control"])[gi], ts)):
+                          ("dl_shift", pred[d][ix] - expr["control"][gi], ts), ("dl_shift_own", pred[d][ix] - pred["control"][ix], ts), ("additive_shift", (expr[x] + expr[y] - 2 * expr["control"])[gi], ts)):
             e = tt - pp; acc[m][:, i] += (e @ e, tt @ tt)
+    pd20 = np.full((4, len(doubles)), np.nan)
+    for i in te:
+        d, x, y = doubles[i]; sh = (expr[d] - expr["control"])[gsel]; top = np.argsort(-np.abs(sh))[:20]
+        pm = pred[d][top] - pred["control"][top]; pa = (expr[x] + expr[y] - 2 * expr["control"])[gsel][top]
+        pd20[:, i] = (np.corrcoef(pm, sh[top])[0, 1], np.corrcoef(pa, sh[top])[0, 1], np.mean((pm - sh[top]) ** 2), np.mean((pa - sh[top]) ** 2))
+    np.save(os.path.join(run, f"dl_{a.model}_{a.scheme}_f{a.fold}_pd20.npy"), pd20)
     np.savez(os.path.join(run, f"dl_{a.model}_{a.scheme}_f{a.fold}.npz"), **{m: v for m, v in acc.items()})
     r2 = {m: 1 - v[0].sum() / v[1].sum() for m, v in acc.items() if v[1].sum() > 0}
     print("DL", a.model, a.scheme, a.fold, json.dumps({k: round(v, 3) for k, v in r2.items()}), f"{time.time() - t0:.0f}s", flush=True); print("DL_DONE")
