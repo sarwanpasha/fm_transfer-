@@ -81,6 +81,13 @@ or step by step:
 | `fm_rev_ext.py --wd W --gi F` | external validation with a gene-label permutation test and gene-level controls | `results/rev_ext.json` |
 | `fm_rev_tian.py --wd W` | split-half noise ceiling for the iPSC/neuron comparison | `results/rev_tian.json` |
 | `fm_rev_sciplex.py --h5ad F --wd W` | preprocessing of the combinatorial sci-Plex drug screen | `results/Sciplex_s*_mc500/` |
+| `fm_disjoint.py --wd W --dataset D [--input-cells 10] [--gi F]` | evaluation with disjoint cell thirds for inputs, training and test residuals; propensity, split-half and noise-only controls; growth-map controls for the selection of doubles | `results/disjoint/<D>_s<seed>[_in10].json`, `.npz` |
+| `fm_geneblock.py W` | confidence intervals from resampling genes rather than doubles | `results/geneblock.json` |
+| `fm_strong.py --run R` | tuned kernel baselines: symmetric polynomial kernel ridge, Gaussian process with marginal-likelihood hyperparameters, alignment-based multiple kernel learning | `strong.json`, `strong_pd.npz` |
+| `fm_extra.py --run R` | kernel-grid sensitivity, calibration of predictive intervals, dependence of the zero-mean split on the gene panel | `extra.json` |
+| `fm_genepert.py --run R --emb E` | GenePert-style ridge regression on GenePT gene embeddings | `genepert.json`, `genepert_pd.npz` |
+| `fm_prior_stats.py --wd W` | screen templates (cell numbers, per-cell variance, effect spectrum) needed to train GrnPFN from its public code | `results/prior_stats.json` |
+| `fm_grnpfn_eval.py --wd W --model M --grnpfn-src S --dataset D [--pergene]` | GrnPFN, PKE, ridge and the training mean on disjoint cell thirds and 256 genes; optional per-gene breakdown | `results/grnpfn/<D>_<model>.json` |
 | `fm_rev_summary.py W`, `fm_dl_summary.py W` | dataset-level statistics pooled over subsamples (bootstrap over doubles) | `results/rev_summary.json`, `results/dl_summary.json` |
 | `fm_final_table.py W` | summary table across datasets and splits | `results/final_table.txt` |
 | `fm_figdata.py`, `make_figures.py` | collect results and draw the figures | `results/figdata.json`, `fig*.pdf` |
