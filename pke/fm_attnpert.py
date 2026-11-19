@@ -4,7 +4,7 @@ trained per fold on all singles and the training doubles (10% held out for valid
 the predicted residual is pred(double) - expr[a] - expr[b] + expr[ctrl]. The gene ontology graph is built once per run with
 the Jaccard rule and threshold of the AttentionPert code (vectorized), and gene2vec embeddings follow its example script
 (genes without a vector are drawn from a Gaussian fitted to all vectors).
-Usage: fm_attnpert.py --run R --attnpert-src S --gene2go F --gene2vec F [--epochs 20] [--schemes random genegrp]"""
+Usage: fm_attnpert.py --run R --attnpert-src S --gene2go F --gene2vec F [--epochs 20] [--schemes random genegrp] [--device cuda]"""
 import argparse, json, os, sys, pickle, time
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -39,7 +39,7 @@ def main():
     p.add_argument("--gene2go", required=True); p.add_argument("--gene2vec", required=True); p.add_argument("--seeds", type=int, nargs="*", default=[0])
     p.add_argument("--epochs", type=int, default=20); p.add_argument("--max-cells", type=int, default=100); p.add_argument("--ctrl-cells", type=int, default=1000)
     p.add_argument("--folds", type=int, default=5); p.add_argument("--schemes", nargs="*", default=["random", "genegrp"])
-    p.add_argument("--wd", default=os.environ.get("FMTRANSFER_ROOT", ".")); a = p.parse_args()
+    p.add_argument("--device", default="cpu"); p.add_argument("--wd", default=os.environ.get("FMTRANSFER_ROOT", ".")); a = p.parse_args()
     import anndata as ad, scanpy as sc, scipy.sparse as sp, torch
     import fmcore as F, fmpredict as FP
     from fm_gira import gene_feats, ridge_pairs
@@ -91,9 +91,9 @@ def main():
                 pdata.set2conditions = {"train": sing + trd + ["ctrl"], "val": val, "test": ted if ted else val}
                 pdata.get_dataloader(batch_size=32, test_batch_size=128)
                 os.chdir(gdir); torch.manual_seed(fi)
-                m = ATTNPERT_RECORD_TRAIN(pdata, device="cpu"); m.model_initialize(hidden_size=64, model_class=PL_PW_non_add_Model, **setting)
+                m = ATTNPERT_RECORD_TRAIN(pdata, device=a.device); m.model_initialize(hidden_size=64, model_class=PL_PW_non_add_Model, **setting)
                 m.train(epochs=a.epochs); os.chdir(cwd)
-                res = evaluate(pdata.dataloader["test_loader"], m.best_model, False, "cpu", real_num_genes=m.real_num_genes)
+                res = evaluate(pdata.dataloader["test_loader"], m.best_model, False, a.device, real_num_genes=m.real_num_genes)
                 pred = {}
                 for c in np.unique(res["pert_cat"]): pred[c] = res["pred"][res["pert_cat"] == c].mean(0).astype(np.float64)
                 Pr = ridge_pairs(Fraw[tr], Fraw[te], R[tr])
