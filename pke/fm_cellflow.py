@@ -3,7 +3,7 @@ flow-matching model that maps control cells to perturbed cells conditioned on th
 represented by its GenePT embedding (64 principal components; control is the zero vector) and a double by the set of its 2
 gene embeddings (mean pooling, as in the CellFlow combination tutorial). Cells are represented by 50 principal components of
 log-normalized expression on the 5,000 highly variable genes, computed on the training cells of each fold; predictions are
-decoded to genes with the same components and averaged over cells. The predicted residual is
+decoded to genes with the same components and averaged over 200 control cells transported by the model (--pred-cells). The predicted residual is
 pred(double) - expr[a] - expr[b] + expr[ctrl], scored on the 50 most changed genes of each double.
 Usage: fm_cellflow.py --run R --emb GenePT.pickle [--iterations 20000] [--schemes random genegrp] [--max-folds 5]"""
 import argparse, functools, json, os, pickle, sys, time
@@ -15,7 +15,7 @@ def main():
     p = argparse.ArgumentParser(); p.add_argument("--run", required=True); p.add_argument("--emb", required=True)
     p.add_argument("--iterations", type=int, default=20000); p.add_argument("--batch", type=int, default=512); p.add_argument("--seeds", type=int, nargs="*", default=[0])
     p.add_argument("--max-cells", type=int, default=100); p.add_argument("--ctrl-cells", type=int, default=1000); p.add_argument("--folds", type=int, default=5)
-    p.add_argument("--max-folds", type=int, default=5); p.add_argument("--schemes", nargs="*", default=["random", "genegrp"]); p.add_argument("--npc", type=int, default=50)
+    p.add_argument("--max-folds", type=int, default=5); p.add_argument("--schemes", nargs="*", default=["random", "genegrp"]); p.add_argument("--npc", type=int, default=50); p.add_argument("--pred-cells", type=int, default=200)
     p.add_argument("--wd", default=os.environ.get("FMTRANSFER_ROOT", ".")); a = p.parse_args()
     import anndata as ad, pandas as pd, scanpy as sc, scipy.sparse as sp
     import fmcore as F, fmpredict as FP
@@ -72,13 +72,14 @@ def main():
                                  probability_path={"constant_noise": 0.5}, match_fn=functools.partial(match_linear, epsilon=1.0, tau_a=1.0, tau_b=1.0),
                                  linear_projection_before_concatenation=True)
                 cf.train(num_iterations=a.iterations, batch_size=a.batch)
-                cm = lk == "control"; Ac = ad.AnnData(X=np.zeros((int(cm.sum()), 1), np.float32), obs=pd.DataFrame({"is_control": True}, index=[f"k{i}" for i in range(int(cm.sum()))])); Ac.obsm["X_pca"] = pcs[cm]; Ac.uns["genept"] = reps
+                cm = lk == "control"; cm[np.flatnonzero(cm)[a.pred_cells:]] = False; Ac = ad.AnnData(X=np.zeros((int(cm.sum()), 1), np.float32), obs=pd.DataFrame({"is_control": True}, index=[f"k{i}" for i in range(int(cm.sum()))])); Ac.obsm["X_pca"] = pcs[cm]; Ac.uns["genept"] = reps
                 cov = pd.DataFrame({"gene1": [doubles[i][1] for i in te], "gene2": [doubles[i][2] for i in te], "condition": [doubles[i][0] for i in te],
                                     "is_control": False})
                 cov["gene1"] = pd.Categorical(cov["gene1"], categories=A.obs["gene1"].cat.categories.union(cov["gene1"].unique()))
                 cov["gene2"] = pd.Categorical(cov["gene2"], categories=A.obs["gene2"].cat.categories.union(cov["gene2"].unique()))
+                tp = time.time(); print(f"  {scheme} fold{fi} trained ({time.time() - t0:.0f}s), predicting", flush=True)
                 preds = cf.predict(adata=Ac, sample_rep="X_pca", condition_id_key="condition", covariate_data=cov)
-                Pr = ridge_pairs(Fraw[tr], Fraw[te], R[tr])
+                print(f"  prediction {time.time() - tp:.0f}s", flush=True); Pr = ridge_pairs(Fraw[tr], Fraw[te], R[tr])
                 for j, i in enumerate(te):
                     d, x, y = doubles[i]; pd_ = np.asarray(preds[d]).mean(0) @ V + mu
                     pg = pd_ - expr[x] - expr[y] + expr["control"]; t = R[i, DE[i]]
