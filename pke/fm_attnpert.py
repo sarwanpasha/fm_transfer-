@@ -4,6 +4,8 @@ trained per fold on all singles and the training doubles (10% held out for valid
 the predicted residual is pred(double) - expr[a] - expr[b] + expr[ctrl]. The gene ontology graph is built once per run with
 the Jaccard rule and threshold of the AttentionPert code (vectorized), and gene2vec embeddings follow its example script
 (genes without a vector are drawn from a Gaussian fitted to all vectors).
+With pandas 2 or later, line 66 of attnpert/attnpert.py must index the control cells with a boolean array,
+np.asarray(self.adata.X[(self.adata.obs.condition == "ctrl").values].mean(0)), instead of the pandas Series.
 Usage: fm_attnpert.py --run R --attnpert-src S --gene2go F --gene2vec F [--epochs 20] [--schemes random genegrp] [--device cuda]"""
 import argparse, json, os, sys, pickle, time
 import numpy as np
