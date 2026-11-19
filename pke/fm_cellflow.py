@@ -72,7 +72,7 @@ def main():
                                  probability_path={"constant_noise": 0.5}, match_fn=functools.partial(match_linear, epsilon=1.0, tau_a=1.0, tau_b=1.0),
                                  linear_projection_before_concatenation=True)
                 cf.train(num_iterations=a.iterations, batch_size=a.batch)
-                cm = lk == "control"; Ac = ad.AnnData(X=np.zeros((int(cm.sum()), 1), np.float32), obs=pd.DataFrame({"is_control": True}, index=[f"k{i}" for i in range(int(cm.sum()))])); Ac.obsm["X_pca"] = pcs[cm]
+                cm = lk == "control"; Ac = ad.AnnData(X=np.zeros((int(cm.sum()), 1), np.float32), obs=pd.DataFrame({"is_control": True}, index=[f"k{i}" for i in range(int(cm.sum()))])); Ac.obsm["X_pca"] = pcs[cm]; Ac.uns["genept"] = reps
                 cov = pd.DataFrame({"gene1": [doubles[i][1] for i in te], "gene2": [doubles[i][2] for i in te], "condition": [doubles[i][0] for i in te],
                                     "is_control": False})
                 cov["gene1"] = pd.Categorical(cov["gene1"], categories=A.obs["gene1"].cat.categories.union(cov["gene1"].unique()))
