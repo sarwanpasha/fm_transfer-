@@ -88,6 +88,9 @@ or step by step:
 | `fm_genepert.py --run R --emb E` | GenePert-style ridge regression on GenePT gene embeddings | `genepert.json`, `genepert_pd.npz` |
 | `fm_prior_stats.py --wd W` | screen templates (cell numbers, per-cell variance, effect spectrum) needed to train GrnPFN from its public code | `results/prior_stats.json` |
 | `fm_grnpfn_eval.py --wd W --model M --grnpfn-src S --dataset D [--pergene]` | GrnPFN, PKE, ridge and the training mean on disjoint cell thirds and 256 genes; optional per-gene breakdown | `results/grnpfn/<D>_<model>.json` |
+| `fm_attnpert.py --run R --attnpert-src S --gene2go F --gene2vec F [--fold k \| --merge]` | AttentionPert (GEARS with Gene2vec embeddings and attention over perturbation weights) per fold, next to ridge; `--fold` trains one fold and `--merge` combines the saved folds | `attnpert.json`, `attnpert_acc_<scheme>.npz` |
+| `fm_cellflow.py --run R --emb E` | CellFlow flow-matching model with GenePT gene representations, scored on residuals next to ridge | `cellflow.json`, `cellflow_acc_<scheme>.npz` |
+| `fm_report_new.py W [part ...]` | compact report of the disjoint-cell, GenePert, AttentionPert and per-gene GrnPFN analyses | printed |
 | `fm_rev_summary.py W`, `fm_dl_summary.py W` | dataset-level statistics pooled over subsamples (bootstrap over doubles) | `results/rev_summary.json`, `results/dl_summary.json` |
 | `fm_final_table.py W` | summary table across datasets and splits | `results/final_table.txt` |
 | `fm_figdata.py`, `make_figures.py` | collect results and draw the figures | `results/figdata.json`, `fig*.pdf` |
