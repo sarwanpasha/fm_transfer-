@@ -6,7 +6,9 @@ the Jaccard rule and threshold of the AttentionPert code (vectorized), and gene2
 (genes without a vector are drawn from a Gaussian fitted to all vectors).
 With pandas 2 or later, line 66 of attnpert/attnpert.py must index the control cells with a boolean array,
 np.asarray(self.adata.X[(self.adata.obs.condition == "ctrl").values].mean(0)), instead of the pandas Series.
-Usage: fm_attnpert.py --run R --attnpert-src S --gene2go F --gene2vec F [--epochs 20] [--schemes random genegrp] [--device cuda]"""
+With --fold k only fold k of each scheme is trained and its errors are saved; --merge then combines the saved folds.
+Usage: fm_attnpert.py --run R --attnpert-src S --gene2go F --gene2vec F [--epochs 20] [--schemes random genegrp] [--device cuda]
+       [--fold k | --merge] [--gdir D]"""
 import argparse, json, os, sys, pickle, time
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -41,7 +43,8 @@ def main():
     p.add_argument("--gene2go", required=True); p.add_argument("--gene2vec", required=True); p.add_argument("--seeds", type=int, nargs="*", default=[0])
     p.add_argument("--epochs", type=int, default=20); p.add_argument("--max-cells", type=int, default=100); p.add_argument("--ctrl-cells", type=int, default=1000)
     p.add_argument("--folds", type=int, default=5); p.add_argument("--schemes", nargs="*", default=["random", "genegrp"])
-    p.add_argument("--device", default="cpu"); p.add_argument("--wd", default=os.environ.get("FMTRANSFER_ROOT", ".")); a = p.parse_args()
+    p.add_argument("--device", default="cpu"); p.add_argument("--fold", type=int, default=None); p.add_argument("--merge", action="store_true"); p.add_argument("--gdir", default=None); p.add_argument("--wd", default=os.environ.get("FMTRANSFER_ROOT", ".")); a = p.parse_args()
+    if a.merge: return merge(a)
     import anndata as ad, scanpy as sc, scipy.sparse as sp, torch
     import fmcore as F, fmpredict as FP
     from fm_gira import gene_feats, ridge_pairs
@@ -71,7 +74,7 @@ def main():
     keep = np.sort(np.array(keep))
     A = ad.AnnData(X=sp.csr_matrix(X.X[keep]), obs={"condition": [gmap(c) for c in lab[keep]], "cell_type": ["cell"] * len(keep)})
     A.var["gene_name"] = hn; A.var_names = hn; A.obs_names = [f"c{i}" for i in range(len(keep))]
-    gdir = os.path.join(a.wd, "data", "attnpert"); os.makedirs(gdir, exist_ok=True); name = f"fmattn_{run}".lower()
+    gdir = a.gdir or os.path.join(a.wd, "data", "attnpert"); os.makedirs(gdir, exist_ok=True); name = f"fmattn_{run}".lower()
     pdata = PertData(gdir); pdata.new_data_process(dataset_name=name, adata=A)
     genes = list(pdata.gene_names)
     gene2go = pickle.load(open(a.gene2go, "rb")); go_edges(genes, gene2go).to_csv(os.path.join(gdir, name, "go.csv"), index=False)
@@ -86,6 +89,7 @@ def main():
         n = len(doubles); acc = {m: dict(err_add=np.zeros(n), err_mod=np.zeros(n), cnt=np.zeros(n)) for m in ("attnpert", "ridge_raw")}; nfall = 0; t0 = time.time()
         for sd in a.seeds:
             for fi, (tr, te) in enumerate(FP.splits(doubles, scheme, a.folds, sd)):
+                if a.fold is not None and fi != a.fold: continue
                 r = np.random.default_rng(100 + fi); trd = [gmap(doubles[i][0]) for i in tr if gmap(doubles[i][0]) in avail]; r.shuffle(trd)
                 nv = max(1, len(trd) // 10); val, trd = trd[:nv], trd[nv:]
                 sing = [gmap(s) for s in singles if gmap(s) in avail]; ted = [gmap(doubles[i][0]) for i in te if gmap(doubles[i][0]) in avail]
@@ -107,12 +111,31 @@ def main():
                     for mm, pp in (("attnpert", pg[DE[i]]), ("ridge_raw", Pr[j, DE[i]])):
                         A_ = acc[mm]; A_["err_add"][i] += t @ t; A_["err_mod"][i] += (t - pp) @ (t - pp); A_["cnt"][i] += 1
                 print(f"  {scheme} seed{sd} fold{fi} done ({time.time() - t0:.0f}s, fallback so far {nfall})", flush=True)
-        np.savez(os.path.join(a.run, f"attnpert_acc_{scheme}.npz"), **{f"{mm}_{k}": v for mm, A_ in acc.items() for k, v in A_.items()}, nfall=nfall)
+        sfx = "" if a.fold is None else f"_f{a.fold}"
+        np.savez(os.path.join(a.run, f"attnpert_acc_{scheme}{sfx}.npz"), **{f"{mm}_{k}": v for mm, A_ in acc.items() for k, v in A_.items()}, nfall=nfall)
+        if a.fold is not None: print(f"AP_FOLD {scheme} fold{a.fold} saved", flush=True); continue
+        out[scheme] = summarize(acc, nfall)
+    if a.fold is None: json.dump(out, open(os.path.join(a.run, "attnpert.json"), "w"), indent=1)
+    print("ATTNPERT_DONE", flush=True)
+
+
+def summarize(acc, nfall):
         ii = np.flatnonzero(acc["ridge_raw"]["cnt"] > 0); B = np.random.default_rng(0).choice(ii, size=(1000, len(ii)))
         r2 = lambda A_, k: 1 - A_["err_mod"][k].sum(-1) / A_["err_add"][k].sum(-1)
         dd = r2(acc["attnpert"], B) - r2(acc["ridge_raw"], B); va, vr = float(r2(acc["attnpert"], ii)), float(r2(acc["ridge_raw"], ii))
-        out[scheme] = dict(attnpert=va, ridge_raw=vr, d=va - vr, lo=float(np.percentile(dd, 2.5)), hi=float(np.percentile(dd, 97.5)), n_test=int(len(ii)), n_fallback=nfall)
-        print(f"AP {scheme:8s} attnpert R2={va:+.3f} ridge R2={vr:+.3f} d={va - vr:+.3f} lo={out[scheme]['lo']:+.3f} hi={out[scheme]['hi']:+.3f} fallback={nfall}", flush=True)
+        o = dict(attnpert=va, ridge_raw=vr, d=va - vr, lo=float(np.percentile(dd, 2.5)), hi=float(np.percentile(dd, 97.5)), n_test=int(len(ii)), n_fallback=int(nfall))
+        print(f"AP attnpert R2={va:+.3f} ridge R2={vr:+.3f} d={va - vr:+.3f} lo={o['lo']:+.3f} hi={o['hi']:+.3f} fallback={nfall} n={len(ii)}", flush=True)
+        return o
+
+
+def merge(a):
+    import glob
+    out = {}
+    for scheme in a.schemes:
+        F = sorted(glob.glob(os.path.join(a.run, f"attnpert_acc_{scheme}_f[0-9].npz")))
+        if not F: continue
+        Z = [np.load(f) for f in F]; acc = {m: {k: sum(z[f"{m}_{k}"] for z in Z) for k in ("err_add", "err_mod", "cnt")} for m in ("attnpert", "ridge_raw")}
+        print(f"{scheme}: {len(F)} folds", flush=True); out[scheme] = dict(summarize(acc, sum(int(z["nfall"]) for z in Z)), n_folds=len(F))
     json.dump(out, open(os.path.join(a.run, "attnpert.json"), "w"), indent=1); print("ATTNPERT_DONE", flush=True)
 
 
